@@ -1,0 +1,124 @@
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
+import matplotlib.pyplot as plt
+plt.rcParams["font.family"] = "Hiragino Sans"
+import os
+import numpy as np
+import pandas as pd
+import statsmodels.api as sm  # statsmodels をインポート
+from tqdm import tqdm
+from ripser import ripser
+from sklearn.metrics import mean_squared_error, r2_score
+
+# -----------------------------
+# データの保存ディレクトリ・ファイル設定
+# -----------------------------
+output_dir = "/Users/hide/卒業研究/resnet_pytorch/output_cifar10/20250126_170439_battiseisokuoff"
+accuracy_csv_path = os.path.join(output_dir, "epoch_accuracies.csv")
+epoch_range = range(1, 61)
+
+# -----------------------------
+# 汎化ギャップデータの取得
+# -----------------------------
+print("📌 汎化ギャップデータを読み込み中...")
+accuracy_df = pd.read_csv(accuracy_csv_path)
+accuracy_df = accuracy_df[accuracy_df["epoch"].isin(epoch_range)]
+generalization_gaps = accuracy_df["generalization_gap"].values
+valid_epochs = accuracy_df["epoch"].values
+print(f"✅ {len(valid_epochs)} エポック分のデータを取得しました。")
+
+# -----------------------------
+# PH 特徴量抽出（FC 層の重みの相関 512×512）
+# -----------------------------
+all_features = []
+valid_epochs_filtered = []
+
+print("🔹 FC 層の重みの相関（512×512）から PH を抽出中...")
+for epoch in tqdm(valid_epochs, desc="エポック処理中", unit="epoch"):
+    weight_file = os.path.join(output_dir, f"epoch_{epoch}_fc_weight.npy")
+    if not os.path.exists(weight_file):
+        print(f"⚠️ ファイルが見つかりません: {weight_file}")
+        continue
+    # 重みをロード (10, 512) → 転置して (512, 10) に変換
+    fc_weight = np.load(weight_file)  # (10, 512)
+    fc_weight = fc_weight.T  # (512, 10)
+    
+    # 相関行列を計算（512×512）
+    # ※ 512 個のユニット間の相関を求めるため、rowvar=True（デフォルト）でOK
+    correlation_matrix = np.corrcoef(fc_weight, rowvar=True)
+    correlation_matrix = np.nan_to_num(correlation_matrix, nan=0.0)
+    
+    # 距離行列を作成（1 - 相関係数の絶対値）
+    distance_matrix = 1 - np.abs(correlation_matrix)
+    np.fill_diagonal(distance_matrix, 0)
+    distance_matrix = np.nan_to_num(distance_matrix, nan=1.0)
+    
+    # パーシステントホモロジーを計算
+    diagrams = ripser(distance_matrix, maxdim=1, metric="precomputed")["dgms"]
+    
+    # PH 特徴量の抽出
+    all_lifetimes = []
+    all_midpoints = []
+    for dim in range(len(diagrams)):
+        diagram_dim = diagrams[dim]
+        finite_bars = [(b, d) for (b, d) in diagram_dim if np.isfinite(d)]
+        if len(finite_bars) > 0:
+            lifetimes = [d - b for b, d in finite_bars]   # 生存時間 λ
+            midpoints = [(b + d) / 2 for b, d in finite_bars]  # ミッドライフ μ
+            all_lifetimes.extend(lifetimes)
+            all_midpoints.extend(midpoints)
+    lambda_mean = np.mean(all_lifetimes) if len(all_lifetimes) > 0 else 0.0
+    mu_mean = np.mean(all_midpoints) if len(all_midpoints) > 0 else 0.0
+    all_features.append([lambda_mean, mu_mean])
+    valid_epochs_filtered.append(epoch)
+
+# NumPy 配列に変換
+all_features = np.array(all_features)
+valid_epochs_filtered = np.array(valid_epochs_filtered)
+
+# -----------------------------
+# 回帰分析（statsmodels を使用）
+# -----------------------------
+print("📌 OLS 回帰モデルを学習中...")
+X = sm.add_constant(all_features)  # 切片（バイアス）を追加
+y = generalization_gaps[:len(valid_epochs_filtered)]
+model = sm.OLS(y, X).fit()
+predicted_gaps = model.predict(X)
+
+# 回帰結果の統計情報
+r2 = model.rsquared
+mse = mean_squared_error(y, predicted_gaps)
+rmse = np.sqrt(mse)
+print("✅ 回帰分析が完了しました。")
+print(model.summary())  # 詳細な統計情報を出力
+
+# -----------------------------
+# 統計量を DataFrame にまとめる
+# -----------------------------
+conf_int = model.conf_int()
+coef_df = pd.DataFrame({
+    "パラメータ": ["バイアス (const)", "パーシステンスライフ (λ)", "パーシステンスミッドライフ (μ)"],
+    "回帰係数": model.params,         # pandas.Series そのまま
+    "標準誤差": model.bse,
+    "t 値": model.tvalues,
+    "p 値": model.pvalues,
+    "95\% 信頼区間下限": conf_int[:, 0],
+    "95\% 信頼区間上限": conf_int[:, 1]
+})
+
+# CSV に保存
+coef_result_path = os.path.join(output_dir, "回帰分析統計量_fc_weight_512x512_persistence.csv")
+coef_df.to_csv(coef_result_path, index=False, encoding="utf-8-sig")
+print(f"✅ 回帰分析統計量を保存しました: {coef_result_path}")
+
+# -----------------------------
+# 可視化：実測値 vs 予測値
+# -----------------------------
+plt.figure(figsize=(8, 5))
+plt.scatter(valid_epochs_filtered, y, label="実測値", marker="o", alpha=0.7, color="blue")
+plt.plot(valid_epochs_filtered, predicted_gaps, label="予測値", linestyle="--", color="red")
+plt.xlabel("エポック数")
+plt.ylabel("汎化ギャップ")
+plt.legend()
+plt.grid()
+plt.show()
