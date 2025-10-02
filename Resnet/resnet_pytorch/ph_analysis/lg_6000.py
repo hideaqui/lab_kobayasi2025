@@ -7,7 +7,8 @@ from sklearn.metrics import mean_squared_error
 import os
 
 # ★ 新しい `output_dir`
-output_dir = "/Users/hide/卒業研究/resnet_pytorch/output_6000/20250125_030030"
+# 学習データが入っているリポジトリのpath
+output_dir = "../epoch_accuracies_20250923_203920"
 accuracy_csv_path = os.path.join(output_dir, "epoch_accuracies.csv")
 
 num_epochs = 10  # 1 ~ 10

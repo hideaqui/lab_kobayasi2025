@@ -48,7 +48,7 @@ def train(total_epoch: int = 20):
 
     # 結果保存用フォルダの作成
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = f"/Users/hide/卒業研究/resnet_pytorch/output/{timestamp}"
+    output_dir = f"epoch_accuracies_{timestamp}"
     os.makedirs(output_dir, exist_ok=True)
 
     # 学習前（epoch 0）の Layer4 の活性化と正答率を保存
@@ -113,7 +113,7 @@ def save_epoch_accuracies():
 
     # 結果を保存
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = f"/Users/hide/卒業研究/resnet_pytorch/output/{timestamp}"
+    output_dir = f"epoch_data_{timestamp}"
     os.makedirs(output_dir, exist_ok=True)
 
     # CSVファイルに保存
