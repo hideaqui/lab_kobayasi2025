@@ -1,3 +1,4 @@
+# ResNet50モデルの定義（モノクロ画像対応）
 from torch import nn
 from torchvision.models import resnet50, ResNet50_Weights
 

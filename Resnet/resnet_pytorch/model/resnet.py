@@ -1,3 +1,4 @@
+# ResNet18モデルの定義（モノクロ画像対応）
 from torch import nn
 from torchvision.models import resnet18, ResNet18_Weights
 
