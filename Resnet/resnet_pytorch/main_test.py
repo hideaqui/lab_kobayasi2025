@@ -1,4 +1,25 @@
+import torch.nn.init as init
+
+def initialize_weights(model, mode="kaiming"):
+    for m in model.modules():
+        if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+            if mode == "normal":
+                init.normal_(m.weight, mean=0.0, std=0.02)
+            elif mode == "uniform":
+                init.uniform_(m.weight, a=-0.1, b=0.1)
+            elif mode == "xavier_uniform":
+                init.xavier_uniform_(m.weight)
+            elif mode == "xavier_normal":
+                init.xavier_normal_(m.weight)
+            elif mode == "kaiming_uniform":
+                init.kaiming_uniform_(m.weight, nonlinearity="relu")
+            elif mode == "kaiming_normal":
+                init.kaiming_normal_(m.weight, nonlinearity="relu")
+            if m.bias is not None:
+                init.zeros_(m.bias)
 import os
+import os
+print(">>> running script from:", os.path.abspath(__file__))
 import csv
 import numpy as np
 import torch
@@ -29,6 +50,7 @@ def train(total_epoch: int = 20):
 
     # 事前学習済みモデルを使用しない
     model = get_resnet(pretrained=False).to(device)
+    initialize_weights(model, mode="kaiming_normal")  # ここで方式を切り替え
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
@@ -48,7 +70,7 @@ def train(total_epoch: int = 20):
 
     # 結果保存用フォルダの作成
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = f"/Users/hide/卒業研究/resnet_pytorch/output/{timestamp}"
+    output_dir = f"/Users/hide/lab_kobayasi2025/Resnet/resnet_pytorch/output/{timestamp}"
     os.makedirs(output_dir, exist_ok=True)
 
     # 学習前（epoch 0）の Layer4 の活性化と正答率を保存
@@ -113,7 +135,7 @@ def save_epoch_accuracies():
 
     # 結果を保存
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = f"/Users/hide/卒業研究/resnet_pytorch/output/{timestamp}"
+    output_dir = f"/Users/hide/lab_kobayasi2025/Resnet/resnet_pytorch/output/{timestamp}"
     os.makedirs(output_dir, exist_ok=True)
 
     # CSVファイルに保存

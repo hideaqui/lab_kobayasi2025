@@ -11,8 +11,8 @@ from ripser import ripser
 from sklearn.metrics import mean_squared_error, r2_score
 
 # **データの保存ディレクトリ**
-output_dir = "/Users/hide/卒業研究/resnet_pytorch/output_cifar10/20250126_170439_battiseisokuoff"
-accuracy_csv_path = os.path.join(output_dir, "epoch_accuracies.csv")
+output_dir = "/Users/hide/lab_kobayasi2025/output/normal_20251001_032131"
+accuracy_csv_path = os.path.join(output_dir, "epoch_accuracies_normal.csv")
 
 # **解析するエポックの範囲**
 epoch_range = range(1, 61)

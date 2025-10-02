@@ -1,3 +1,4 @@
+# ResNet18モデルの定義（カラー画像対応）
 from torch import nn
 from torchvision.models import resnet18, ResNet18_Weights
 
@@ -18,9 +19,9 @@ def get_resnet(pretrained: bool = True, num_classes: int = 10, disable_bn: bool 
     weights = ResNet18_Weights.DEFAULT if pretrained else None
     model = resnet18(weights=weights)
 
-    # **入力チャンネルを 3 に変更（CIFAR-10 は RGB 画像）**
+    # **入力チャンネルを 1 に変更（モノクロ画像用）**
     model.conv1 = nn.Conv2d(
-        in_channels=3,  # **RGB画像用に変更**
+        in_channels=1,  # **モノクロ画像用に変更**
         out_channels=64,
         kernel_size=model.conv1.kernel_size,
         stride=model.conv1.stride,
