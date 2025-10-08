@@ -11,7 +11,7 @@ import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 # seedの設定###########################################
-seed = 1002
+seed = 1008
 random.seed(seed)
 np.random.seed(seed)
 torch.manual_seed(seed)
@@ -41,6 +41,12 @@ def evaluate_accuracy(model, dataloader, device):
     return correct / total
 
 def train(total_epoch: int = 20, mode="uniform", seed = seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+
     device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
     train_dataloader, test_dataloader = get_dataloader(root="data", batch_size=64)
 
@@ -124,12 +130,25 @@ def train(total_epoch: int = 20, mode="uniform", seed = seed):
         np.save(os.path.join(output_dir, f"epoch_{epoch+1}_layer2.npy"), activation_2)
         np.save(os.path.join(output_dir, f"epoch_{epoch+1}_layer3.npy"), activation_3)
         np.save(os.path.join(output_dir, f"epoch_{epoch+1}_layer4.npy"), activation_4)
+
+        # 各エポック終了後に各層の重みを保存
+        layer_weights = {
+            "layer1": model.layer1.state_dict(),
+            "layer2": model.layer2.state_dict(),
+            "layer3": model.layer3.state_dict(),
+            "layer4": model.layer4.state_dict(),
+            "fc": model.fc.state_dict(),
+        }
+        for layer_name, state_dict in layer_weights.items():
+            weights_cpu = {k: v.cpu().numpy() for k, v in state_dict.items()}
+            np.save(os.path.join(output_dir, f"epoch_{epoch+1}_{layer_name}_weights.npy"), weights_cpu)
+
         print(f"Epoch {epoch + 1}: Train Acc = {train_acc:.4f}, Test Acc = {test_acc:.4f}, Gap = {train_acc - test_acc:.4f}")
 
     return accuracy_log, test_accuracy_log, generalization_gap, output_dir
 
 def save_epoch_accuracies():
-    accuracy_log, test_accuracy_log, generalization_gap, output_dir = train(total_epoch=10, mode="uniform") #epoch数はここ
+    accuracy_log, test_accuracy_log, generalization_gap, output_dir = train(total_epoch=20, mode="uniform", seed=seed) #epoch数はここ
     output_path = os.path.join(output_dir, "epoch_accuracies_uniform.csv")
     with open(output_path, "w", newline='') as csvfile:
         writer = csv.writer(csvfile)
