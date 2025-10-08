@@ -30,7 +30,15 @@ def evaluate_accuracy(model, dataloader, device):
     return correct / total
 
 def train(total_epoch: int = 20, mode="xavier_normal"):
-    device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
+    # 1. CUDA(GPU)が利用可能かチェックして最優先で使用
+    # 2. CUDAが使えない場合はMPS、それも使えない場合はCPUを使用
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
+    print(f"使用中のデバイス: {device}")
     train_dataloader, test_dataloader = get_dataloader(root="data", batch_size=64)
 
     model = get_resnet(pretrained=False).to(device)
@@ -56,6 +64,27 @@ def train(total_epoch: int = 20, mode="xavier_normal"):
     test_acc_0 = evaluate_accuracy(model, test_dataloader, device)
 
     np.save(os.path.join(output_dir, "epoch_0_layer4.npy"), last_activation)
+    # 各層ごとの重みを保存（エポック0）
+    layer_names = ['layer1', 'layer2', 'layer3', 'layer4', 'fc']
+    for layer_name in layer_names:
+        layer = getattr(model, layer_name, None)
+        if layer is not None:
+            weights = None
+            # layer1〜layer4はSequentialの可能性があるため、重みをまとめる
+            if isinstance(layer, nn.Sequential):
+                weights = {}
+                for name, module in layer.named_modules():
+                    # Conv2dやLinearのweightを収集
+                    if isinstance(module, (nn.Conv2d, nn.Linear)):
+                        weights[name] = module.weight.cpu().detach().numpy()
+                # numpyに保存するためdictをnp.savez形式で保存
+                np.savez(os.path.join(output_dir, f"epoch_0_{layer_name}_weights.npz"), **weights)
+            else:
+                # fc層など単一の層の場合
+                if hasattr(layer, 'weight'):
+                    weights = layer.weight.cpu().detach().numpy()
+                    np.save(os.path.join(output_dir, f"epoch_0_{layer_name}_weights.npy"), weights)
+
     accuracy_log.append(train_acc_0)
     test_accuracy_log.append(test_acc_0)
     generalization_gap.append(train_acc_0 - test_acc_0)
