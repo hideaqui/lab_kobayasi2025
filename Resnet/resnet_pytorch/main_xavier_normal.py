@@ -9,26 +9,31 @@ from datetime import datetime
 from dataset.mnist import get_dataloader
 from model.resnet import get_resnet
 
+# モデルの重みを初期化する関数（Xavier正規分布初期化）
 def initialize_weights(model, mode="xavier_normal"):
     for m in model.modules():
         if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
             if mode == "xavier_normal":
+                # Xavierの正規分布で重みを初期化
                 init.xavier_normal_(m.weight)
             if m.bias is not None:
+                # バイアスはゼロで初期化
                 init.zeros_(m.bias)
 
+# モデルの精度を評価する関数
 def evaluate_accuracy(model, dataloader, device):
-    model.eval()
+    model.eval()  # 評価モードに切り替え
     correct, total = 0, 0
-    with torch.no_grad():
+    with torch.no_grad():  # 勾配計算を無効化
         for images, labels in dataloader:
             images, labels = images.to(device), labels.to(device)
             outputs = model(images)
-            preds = outputs.argmax(axis=1)
+            preds = outputs.argmax(axis=1)  # 最大値のインデックスを予測ラベルとする
             correct += (preds == labels).sum().item()
             total += labels.size(0)
-    return correct / total
+    return correct / total  # 精度を返す
 
+# 学習を行うメイン関数
 def train(total_epoch: int = 20, mode="xavier_normal"):
     # 1. CUDA(GPU)が利用可能かチェックして最優先で使用
     # 2. CUDAが使えない場合はMPS、それも使えない場合はCPUを使用
@@ -39,32 +44,52 @@ def train(total_epoch: int = 20, mode="xavier_normal"):
     else:
         device = torch.device("cpu")
     print(f"使用中のデバイス: {device}")
+    
+    # データローダーの取得（MNIST）
     train_dataloader, test_dataloader = get_dataloader(root="data", batch_size=64)
 
+    # ResNetモデルの取得とデバイスへの転送
     model = get_resnet(pretrained=False).to(device)
+    
+    # モデルの重みを初期化
     initialize_weights(model, mode=mode)
 
+    # 損失関数と最適化手法の設定
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
 
+    # 学習過程の精度ログ用リスト
     accuracy_log, test_accuracy_log, generalization_gap = [], [], []
-    last_activation = None
-    def hook(module, input, output):
-        nonlocal last_activation
-        last_activation = output.cpu().detach().numpy()
-    model.layer4.register_forward_hook(hook)
+    
+    # 中間層の活性化を保存する辞書
+    activations = {}
+    
+    # フック関数を定義し、指定した層の出力を保存
+    def get_hook(name):
+        def hook(module, input, output):
+            activations[name] = output.cpu().detach().numpy()
+        return hook
 
+    # layer1からlayer4までにフックを登録
+    for layer_name in ['layer1', 'layer2', 'layer3', 'layer4']:
+        layer = getattr(model, layer_name)
+        layer.register_forward_hook(get_hook(layer_name))
+
+    # 出力ディレクトリをタイムスタンプ付きで作成
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_dir = f"./output/{mode}_{timestamp}"
     os.makedirs(output_dir, exist_ok=True)
 
-    # epoch 0
+    # エポック0の精度を評価（初期状態のモデル）
     train_acc_0 = evaluate_accuracy(model, train_dataloader, device)
     test_acc_0 = evaluate_accuracy(model, test_dataloader, device)
 
-    np.save(os.path.join(output_dir, "epoch_0_layer4.npy"), last_activation)
-    # 各層ごとの重みを保存（エポック0）
+    # エポック0の各層の活性化を保存
+    for layer_name, act in activations.items():
+        np.save(os.path.join(output_dir, f"epoch_0_{layer_name}.npy"), act)
+        
+    # エポック0の各層の重みを保存
     layer_names = ['layer1', 'layer2', 'layer3', 'layer4', 'fc']
     for layer_name in layer_names:
         layer = getattr(model, layer_name, None)
@@ -85,31 +110,36 @@ def train(total_epoch: int = 20, mode="xavier_normal"):
                     weights = layer.weight.cpu().detach().numpy()
                     np.save(os.path.join(output_dir, f"epoch_0_{layer_name}_weights.npy"), weights)
 
+    # エポック0の精度をログに追加
     accuracy_log.append(train_acc_0)
     test_accuracy_log.append(test_acc_0)
     generalization_gap.append(train_acc_0 - test_acc_0)
 
+    # 学習ループ開始
     for epoch in range(total_epoch):
-        model.train()
+        model.train()  # 学習モードに切り替え
+        # バッチごとに学習
         for images, labels in tqdm(train_dataloader, desc=f"Epoch {epoch+1}"):
             images, labels = images.to(device), labels.to(device)
-            optimizer.zero_grad()
-            out = model(images)
-            loss = criterion(out, labels)
-            loss.backward()
-            optimizer.step()
-        scheduler.step()
+            optimizer.zero_grad()  # 勾配初期化
+            out = model(images)    # 順伝播
+            loss = criterion(out, labels)  # 損失計算
+            loss.backward()        # 逆伝播
+            optimizer.step()       # パラメータ更新
+        scheduler.step()           # 学習率更新
 
-        # eval both train and test accuracies
+        # 学習後に訓練データとテストデータの精度を評価
         train_acc = evaluate_accuracy(model, train_dataloader, device)
         test_acc = evaluate_accuracy(model, test_dataloader, device)
         accuracy_log.append(train_acc)
         test_accuracy_log.append(test_acc)
         generalization_gap.append(train_acc - test_acc)
 
-        np.save(os.path.join(output_dir, f"epoch_{epoch+1}_layer4.npy"), last_activation)
+        # 各層の活性化を保存
+        for layer_name, act in activations.items():
+            np.save(os.path.join(output_dir, f"epoch_{epoch+1}_{layer_name}.npy"), act)
 
-        # 各層ごとの重みを保存
+        # 各層の重みを保存
         layer_names = ['layer1', 'layer2', 'layer3', 'layer4', 'fc']
         for layer_name in layer_names:
             layer = getattr(model, layer_name, None)
@@ -130,17 +160,23 @@ def train(total_epoch: int = 20, mode="xavier_normal"):
                         weights = layer.weight.cpu().detach().numpy()
                         np.save(os.path.join(output_dir, f"epoch_{epoch+1}_{layer_name}_weights.npy"), weights)
 
+    # 学習結果のログと出力ディレクトリを返す
     return accuracy_log, test_accuracy_log, generalization_gap, output_dir
 
+# エポックごとの精度をCSVに保存する関数
 def save_epoch_accuracies():
     accuracy_log, test_accuracy_log, generalization_gap, output_dir = train(total_epoch=20, mode="xavier_normal")
     output_path = os.path.join(output_dir, "epoch_accuracies_xavier_normal.csv")
+    # CSVファイルに書き込み
     with open(output_path, "w", newline='') as csvfile:
         writer = csv.writer(csvfile)
+        # ヘッダー行
         writer.writerow(['epoch','train_accuracy','test_accuracy','generalization_gap'])
+        # 各エポックの精度を行として書き込み
         for epoch in range(len(accuracy_log)):
             writer.writerow([epoch, accuracy_log[epoch], test_accuracy_log[epoch], generalization_gap[epoch]])
     print(f"Epoch accuracies saved in {output_path}")
 
+# スクリプト実行時のエントリーポイント
 if __name__ == "__main__":
     save_epoch_accuracies()
