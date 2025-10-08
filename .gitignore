@@ -1,0 +1,41 @@
+# =============================
+# Python / PyTorch 用 .gitignore
+# （実験結果・中間データは追跡する）
+# =============================
+
+# ---- Pythonキャッシュ ----
+__pycache__/
+*.py[cod]
+*.so
+
+# ---- 仮想環境 ----
+venv/
+.env/
+env/
+*.venv
+
+# ---- エディタ / VSCode ----
+.vscode/
+*.code-workspace
+.idea/
+
+# ---- データセットのみ無視 ----
+data/
+datasets/
+
+# ---- ログや外部出力を無視したい場合 ----
+wandb/
+runs/
+checkpoints/
+
+# ---- OSや一時ファイル ----
+.DS_Store
+Thumbs.db
+desktop.ini
+*.tmp
+*.bak
+
+# ---- ビルド関連 ----
+build/
+dist/
+*.egg-info/
