@@ -1,13 +1,4 @@
 import random
-# seedの設定###########################################
-seed = 1008
-random.seed(seed)
-np.random.seed(seed)
-torch.manual_seed(seed)
-torch.backends.cudnn.benchmark = False
-torch.backends.cudnn.deterministic = True
-########################################################
-
 import os
 import csv
 import numpy as np
@@ -19,6 +10,14 @@ from datetime import datetime
 from dataset.mnist import get_dataloader
 from model.resnet import get_resnet
 
+# seedの設定###########################################
+seed = 1008
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+torch.backends.cudnn.benchmark = False
+torch.backends.cudnn.deterministic = True
+########################################################
 # モデルの重みを初期化する関数（一様分布初期化）
 def initialize_weights(model, mode="uniform"):
     for m in model.modules():
@@ -55,7 +54,7 @@ def train(total_epoch: int = 20, mode="uniform", seed=seed):
     print(f"使用中のデバイス: {device}")
     
     # データローダーの取得（MNIST）
-    train_dataloader, test_dataloader = get_dataloader(root="data", batch_size=64)
+    train_dataloader, test_dataloader = get_dataloader(root="data", batch_size=256)
 
     # ResNetモデルの取得とデバイスへの転送
     model = get_resnet(pretrained=False).to(device)
