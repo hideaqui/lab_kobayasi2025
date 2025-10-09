@@ -56,8 +56,8 @@ for i, (folder, label) in enumerate(methods):
     ax.set_title(label, fontsize=12)
     ax.set_xlabel("エポック数")
     ax.set_ylabel("精度")
-    ax.set_xticks(range(0, 61, 10))
-    ax.set_ylim(0, 1.05)
+    ax.set_xticks(range(0, 20, 5))
+    ax.set_ylim(0.9, 1.0)
     ax.grid(True, linestyle="--", alpha=0.6)
     ax.legend(fontsize=8, loc="lower right")
 
