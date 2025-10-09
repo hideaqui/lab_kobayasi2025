@@ -1,13 +1,4 @@
 import random
-# seedの設定###########################################
-seed = 1008
-random.seed(seed)
-np.random.seed(seed)
-torch.manual_seed(seed)
-torch.backends.cudnn.benchmark = False
-torch.backends.cudnn.deterministic = True
-########################################################
-
 import os
 import csv
 import numpy as np
@@ -18,6 +9,19 @@ from tqdm import tqdm
 from datetime import datetime
 from dataset.mnist import get_dataloader
 from model.resnet import get_resnet
+
+# GPU最適化設定（RTX対応）
+torch.backends.cudnn.benchmark = True
+torch.backends.cudnn.deterministic = False
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+
+# seedの設定###########################################
+seed = 1009
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+########################################################
 
 # モデルの重みを初期化する関数（Kaiming一様分布初期化）
 def initialize_weights(model, mode="kaiming_uniform"):
@@ -30,17 +34,37 @@ def initialize_weights(model, mode="kaiming_uniform"):
                 init.zeros_(m.bias)
 
 # モデルの精度を評価する関数
+@torch.inference_mode()
 def evaluate_accuracy(model, dataloader, device):
     model.eval()
     correct, total = 0, 0
-    with torch.no_grad():
-        for images, labels in dataloader:
-            images, labels = images.to(device), labels.to(device)
-            outputs = model(images)
-            preds = outputs.argmax(axis=1)
-            correct += (preds == labels).sum().item()
-            total += labels.size(0)
+    for images, labels in dataloader:
+        images, labels = images.to(device, non_blocking=True), labels.to(device, non_blocking=True)
+        outputs = model(images)
+        preds = outputs.argmax(axis=1)
+        correct += (preds == labels).sum().item()
+        total += labels.size(0)
     return correct / total
+
+def save_weights_and_activations(model, activations, output_dir, epoch, layer_names):
+    # 活性化保存
+    for layer_name, act in activations.items():
+        np.save(os.path.join(output_dir, f"epoch_{epoch}_{layer_name}.npy"), act)
+
+    # 重み保存
+    for layer_name in layer_names:
+        layer = getattr(model, layer_name, None)
+        if layer is not None:
+            if isinstance(layer, nn.Sequential):
+                weights = {}
+                for name, module in layer.named_modules():
+                    if isinstance(module, (nn.Conv2d, nn.Linear)):
+                        weights[name] = module.weight.cpu().detach().numpy()
+                np.savez(os.path.join(output_dir, f"epoch_{epoch}_{layer_name}_weights.npz"), **weights)
+            else:
+                if hasattr(layer, 'weight'):
+                    np.save(os.path.join(output_dir, f"epoch_{epoch}_{layer_name}_weights.npy"),
+                            layer.weight.cpu().detach().numpy())
 
 # 学習を行うメイン関数
 def train(total_epoch: int = 20, mode="kaiming_uniform", seed=seed):
@@ -54,7 +78,7 @@ def train(total_epoch: int = 20, mode="kaiming_uniform", seed=seed):
     print(f"使用中のデバイス: {device}")
 
     # データロード
-    train_dataloader, test_dataloader = get_dataloader(root="data", batch_size=64)
+    train_dataloader, test_dataloader = get_dataloader(root="data", batch_size=256, num_workers=4, seed=seed)
 
     # モデルを作成して初期化
     model = get_resnet(pretrained=False).to(device)
@@ -87,41 +111,32 @@ def train(total_epoch: int = 20, mode="kaiming_uniform", seed=seed):
     train_acc_0 = evaluate_accuracy(model, train_dataloader, device)
     test_acc_0 = evaluate_accuracy(model, test_dataloader, device)
 
-    for layer_name, act in activations.items():
-        np.save(os.path.join(output_dir, f"epoch_0_{layer_name}.npy"), act)
-
-    # 各層の重み保存
     layer_names = ['layer1', 'layer2', 'layer3', 'layer4', 'fc']
-    for layer_name in layer_names:
-        layer = getattr(model, layer_name, None)
-        if layer is not None:
-            if isinstance(layer, nn.Sequential):
-                weights = {}
-                for name, module in layer.named_modules():
-                    if isinstance(module, (nn.Conv2d, nn.Linear)):
-                        weights[name] = module.weight.cpu().detach().numpy()
-                np.savez(os.path.join(output_dir, f"epoch_0_{layer_name}_weights.npz"), **weights)
-            else:
-                if hasattr(layer, 'weight'):
-                    np.save(os.path.join(output_dir, f"epoch_0_{layer_name}_weights.npy"),
-                            layer.weight.cpu().detach().numpy())
+
+    save_weights_and_activations(model, activations, output_dir, 0, layer_names)
 
     # 精度ログ更新
     accuracy_log.append(train_acc_0)
     test_accuracy_log.append(test_acc_0)
     generalization_gap.append(train_acc_0 - test_acc_0)
 
+    print(f"Epoch 0 - Loss: N/A, Train Acc: {train_acc_0:.4f}, Test Acc: {test_acc_0:.4f}")
+
     # 学習ループ
     for epoch in range(total_epoch):
         model.train()
-        for images, labels in tqdm(train_dataloader, desc=f"Epoch {epoch+1}"):
-            images, labels = images.to(device), labels.to(device)
+        running_loss = 0.0
+        for images, labels in tqdm(train_dataloader, desc=f"Epoch {epoch+1}/{total_epoch}"):
+            images, labels = images.to(device, non_blocking=True), labels.to(device, non_blocking=True)
             optimizer.zero_grad()
             out = model(images)
             loss = criterion(out, labels)
             loss.backward()
             optimizer.step()
+            running_loss += loss.item() * images.size(0)
         scheduler.step()
+
+        epoch_loss = running_loss / len(train_dataloader.dataset)
 
         # 評価
         train_acc = evaluate_accuracy(model, train_dataloader, device)
@@ -130,23 +145,9 @@ def train(total_epoch: int = 20, mode="kaiming_uniform", seed=seed):
         test_accuracy_log.append(test_acc)
         generalization_gap.append(train_acc - test_acc)
 
-        # 活性化と重み保存
-        for layer_name, act in activations.items():
-            np.save(os.path.join(output_dir, f"epoch_{epoch+1}_{layer_name}.npy"), act)
+        save_weights_and_activations(model, activations, output_dir, epoch+1, layer_names)
 
-        for layer_name in layer_names:
-            layer = getattr(model, layer_name, None)
-            if layer is not None:
-                if isinstance(layer, nn.Sequential):
-                    weights = {}
-                    for name, module in layer.named_modules():
-                        if isinstance(module, (nn.Conv2d, nn.Linear)):
-                            weights[name] = module.weight.cpu().detach().numpy()
-                    np.savez(os.path.join(output_dir, f"epoch_{epoch+1}_{layer_name}_weights.npz"), **weights)
-                else:
-                    if hasattr(layer, 'weight'):
-                        np.save(os.path.join(output_dir, f"epoch_{epoch+1}_{layer_name}_weights.npy"),
-                                layer.weight.cpu().detach().numpy())
+        print(f"Epoch {epoch+1} - Loss: {epoch_loss:.4f}, Train Acc: {train_acc:.4f}, Test Acc: {test_acc:.4f}")
 
     return accuracy_log, test_accuracy_log, generalization_gap, output_dir
 
