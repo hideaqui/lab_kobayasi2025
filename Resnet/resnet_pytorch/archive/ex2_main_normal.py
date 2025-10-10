@@ -13,7 +13,7 @@ from model.resnet import get_resnet
 # ============================================================
 # GPU最適化設定（RTX対応）
 # ============================================================
-seed = 1010
+seed = 1009
 random.seed(seed)
 np.random.seed(seed)
 torch.manual_seed(seed)
@@ -26,13 +26,13 @@ torch.set_float32_matmul_precision('high')   # 高精度float32演算モード
 
 
 # ============================================================
-# モデルの重みを初期化する関数（一様分布初期化）
+# モデルの重みを初期化する関数（正規分布初期化）
 # ============================================================
-def initialize_weights(model, mode="uniform"):
+def initialize_weights(model, mode="normal"):
     for m in model.modules():
         if isinstance(m, (nn.Conv2d, nn.Linear)):
-            if mode == "uniform":
-                init.uniform_(m.weight, a=-0.1, b=0.1)
+            if mode == "normal":
+                init.normal_(m.weight, mean=0.0, std=0.02)
             if m.bias is not None:
                 init.zeros_(m.bias)
 
@@ -56,7 +56,7 @@ def evaluate_accuracy(model, dataloader, device):
 # ============================================================
 # 学習関数
 # ============================================================
-def train(total_epoch: int = 20, mode="uniform", seed=seed):
+def train(total_epoch: int = 20, mode="normal", seed=seed):
     # デバイス設定
     device = (
         torch.device("cuda") if torch.cuda.is_available() else
@@ -117,7 +117,7 @@ def train(total_epoch: int = 20, mode="uniform", seed=seed):
         model.train()
         running_loss = 0.0
 
-        for batch_idx, (images, labels) in enumerate(tqdm(train_dataloader, desc=f"Epoch {epoch+1}/{total_epoch}")):
+        for images, labels in tqdm(train_dataloader, desc=f"Epoch {epoch+1}/{total_epoch}"):
             images, labels = images.to(device, non_blocking=True), labels.to(device, non_blocking=True)
             optimizer.zero_grad(set_to_none=True)
             outputs = model(images)
@@ -125,13 +125,6 @@ def train(total_epoch: int = 20, mode="uniform", seed=seed):
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
-
-            # ミニバッチごとに重みを保存
-            with torch.no_grad():
-                batch_weights = {}
-                for name, param in model.named_parameters():
-                    batch_weights[name] = param.detach().cpu().numpy()
-                np.savez(os.path.join(output_dir, f"epoch_{epoch+1}_batch_{batch_idx}_weights.npz"), **batch_weights)
 
         scheduler.step()
 
@@ -182,8 +175,8 @@ def save_weights_and_activations(model, activations, output_dir, epoch, mode):
 # 精度をCSVに保存
 # ============================================================
 def save_epoch_accuracies():
-    accuracy_log, test_accuracy_log, generalization_gap, output_dir = train(total_epoch=20, mode="uniform", seed=seed)
-    output_path = os.path.join(output_dir, "epoch_accuracies_uniform.csv")
+    accuracy_log, test_accuracy_log, generalization_gap, output_dir = train(total_epoch=20, mode="normal", seed=seed)
+    output_path = os.path.join(output_dir, "epoch_accuracies_normal.csv")
 
     with open(output_path, "w", newline='') as csvfile:
         writer = csv.writer(csvfile)
