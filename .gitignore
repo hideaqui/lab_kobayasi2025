@@ -39,3 +39,13 @@ desktop.ini
 build/
 dist/
 *.egg-info/
+
+# ---- 実験出力（除外） ----
+# すべての階層にある output ディレクトリを無視
+output/
+**/output/
+# 派生名の出力ディレクトリも無視
+**/output_*/
+# 個別パス（明示）
+Resnet/resnet_pytorch/output/
+Resnet/resnet_pytorch/output_cifar10/
