@@ -48,3 +48,7 @@ output/
 **/output_*/
 # 個別パス（明示）
 Resnet/resnet_pytorch/output/
+
+output/
+*.npy
+*.npz
