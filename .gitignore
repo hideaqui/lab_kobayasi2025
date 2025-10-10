@@ -48,4 +48,3 @@ output/
 **/output_*/
 # 個別パス（明示）
 Resnet/resnet_pytorch/output/
-Resnet/resnet_pytorch/output_cifar10/
