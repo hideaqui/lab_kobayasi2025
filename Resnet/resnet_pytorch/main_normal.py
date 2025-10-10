@@ -13,7 +13,7 @@ from model.resnet import get_resnet
 # ============================================================
 # GPU最適化設定（RTX対応）
 # ============================================================
-seed = 1009
+seed = 1010
 random.seed(seed)
 np.random.seed(seed)
 torch.manual_seed(seed)
