@@ -117,13 +117,19 @@ def train(total_epoch: int = 20, mode="normal", seed=seed):
         model.train()
         running_loss = 0.0
 
-        for images, labels in tqdm(train_dataloader, desc=f"Epoch {epoch+1}/{total_epoch}"):
+        for batch_idx, (images, labels) in enumerate(tqdm(train_dataloader, desc=f"Epoch {epoch+1}/{total_epoch}")):
             images, labels = images.to(device, non_blocking=True), labels.to(device, non_blocking=True)
             optimizer.zero_grad(set_to_none=True)
             outputs = model(images)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
+            # ミニバッチごとに重みを保存
+            with torch.no_grad():
+                batch_weights = {}
+                for name, param in model.named_parameters():
+                    batch_weights[name] = param.detach().cpu().numpy()
+                np.savez(os.path.join(output_dir, f"epoch_{epoch+1}_batch_{batch_idx}_weights.npz"), **batch_weights)
             running_loss += loss.item()
 
         scheduler.step()
