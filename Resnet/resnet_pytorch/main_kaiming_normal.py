@@ -13,7 +13,7 @@ from model.resnet import get_resnet
 # ============================================================
 # GPU最適化設定（RTX対応）
 # ============================================================
-seed = 1009
+seed = 1015
 random.seed(seed)
 np.random.seed(seed)
 torch.manual_seed(seed)
@@ -118,7 +118,7 @@ def train(total_epoch: int = 20, mode="kaiming_normal", seed=seed):
         model.train()
         running_loss = 0.0
 
-        for images, labels in tqdm(train_dataloader, desc=f"Epoch {epoch+1}/{total_epoch}"):
+        for batch_idx, (images, labels) in enumerate(tqdm(train_dataloader, desc=f"Epoch {epoch+1}/{total_epoch}")):
             images, labels = images.to(device, non_blocking=True), labels.to(device, non_blocking=True)
             optimizer.zero_grad(set_to_none=True)
             outputs = model(images)
@@ -126,6 +126,17 @@ def train(total_epoch: int = 20, mode="kaiming_normal", seed=seed):
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
+
+            # Save model weights for each mini-batch
+            with torch.no_grad():
+                batch_weights = {name: param.detach().cpu().numpy() for name, param in model.named_parameters()}
+                np.savez(
+                    os.path.join(
+                        output_dir,
+                        f"epoch_{epoch+1}_batch_{batch_idx}_weights.npz"
+                    ),
+                    **batch_weights
+                )
 
         scheduler.step()
 

@@ -126,7 +126,7 @@ def train(total_epoch: int = 20, mode="kaiming_uniform", seed=seed):
     for epoch in range(total_epoch):
         model.train()
         running_loss = 0.0
-        for images, labels in tqdm(train_dataloader, desc=f"Epoch {epoch+1}/{total_epoch}"):
+        for batch_idx, (images, labels) in enumerate(tqdm(train_dataloader, desc=f"Epoch {epoch+1}/{total_epoch}")):
             images, labels = images.to(device, non_blocking=True), labels.to(device, non_blocking=True)
             optimizer.zero_grad()
             out = model(images)
@@ -134,6 +134,17 @@ def train(total_epoch: int = 20, mode="kaiming_uniform", seed=seed):
             loss.backward()
             optimizer.step()
             running_loss += loss.item() * images.size(0)
+
+            # Save model weights for every mini-batch
+            with torch.no_grad():
+                batch_weights = {name: param.detach().cpu().numpy() for name, param in model.named_parameters()}
+                np.savez(
+                    os.path.join(
+                        output_dir,
+                        f"epoch_{epoch+1}_batch_{batch_idx}_weights.npz"
+                    ),
+                    **batch_weights
+                )
         scheduler.step()
 
         epoch_loss = running_loss / len(train_dataloader.dataset)
