@@ -13,7 +13,7 @@ from model.resnet import get_resnet
 # ============================================================
 # GPU最適化設定（RTX対応）
 # ============================================================
-seed = 1010
+seed = 1015
 random.seed(seed)
 np.random.seed(seed)
 torch.manual_seed(seed)
@@ -128,11 +128,12 @@ def train(total_epoch: int = 20, mode="uniform", seed=seed):
 
             # ミニバッチごとに重みを保存
             with torch.no_grad():
-                batch_weights = {}
-                for name, param in model.named_parameters():
-                    batch_weights[name] = param.detach().cpu().numpy()
-                np.savez(os.path.join(output_dir, f"epoch_{epoch+1}_batch_{batch_idx}_weights.npz"), **batch_weights)
-
+               batch_weights = {name: param.detach().cpu().numpy() for name, param in model.named_parameters()}
+               if batch_idx % 20 == 0:  # 20バッチごとに保存
+                 np.savez(
+                        os.path.join(output_dir, f"epoch_{epoch+1}_batch_{batch_idx}_weights.npz"),
+                        **batch_weights
+                 )
         scheduler.step()
 
         # 評価フェーズ
