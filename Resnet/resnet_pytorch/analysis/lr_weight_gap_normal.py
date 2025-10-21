@@ -1,15 +1,39 @@
-import numpy as np
-import glob, os
-from ripser import ripser
-from persim import plot_diagrams
+import csv
+import glob
+import os
+import sys
+from pathlib import Path
+
 import matplotlib.pyplot as plt
+import numpy as np
+from ripser import ripser
 
 # === データフォルダ ===
-output_dir = "./output/normal_1015"
-pattern = os.path.join(output_dir, "epoch_1_batch_*_weights.npz")
+repo_root = Path(__file__).resolve().parents[2]
+output_dir = repo_root / "output" / "normal_1015"
+pattern = str(output_dir / "epoch_1_batch_*_weights.npz")
+acc_path = output_dir / "epoch_accuracies_normal.csv"
+
+if not output_dir.exists():
+    print(f"⚠️ 出力ディレクトリが見つかりません: {output_dir}")
+
+if acc_path.exists():
+    try:
+        with acc_path.open(encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            generalization_gaps = [float(row["generalization_gap"]) for row in reader if "generalization_gap" in row]
+        print(f"📈 汎化ギャップCSVを読み込みました ({len(generalization_gaps)} 件): {acc_path}")
+    except Exception as exc:
+        print(f"⚠️ 汎化ギャップCSVの読み込みに失敗しました: {acc_path} ({exc})")
+else:
+    print(f"⚠️ 汎化ギャップCSVが見つかりません: {acc_path}")
 
 # === ファイルリスト ===
-files = sorted(glob.glob(pattern), key=lambda x: int(x.split("_batch_")[1].split("_")[0]))
+files = sorted(glob.glob(pattern), key=lambda x: int(Path(x).stem.split("_batch_")[1].split("_")[0]))
+
+if len(files) < 2:
+    print("⚠️ 解析には少なくとも 2 つの重みファイルが必要です。処理を終了します。")
+    sys.exit(0)
 
 print(f"📂 読み込み対象 {len(files)} 件")
 
