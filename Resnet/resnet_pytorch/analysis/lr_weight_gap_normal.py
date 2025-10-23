@@ -9,7 +9,7 @@ import numpy as np
 from ripser import ripser
 
 # === データフォルダ ===
-repo_root = Path(__file__).resolve().parents[2]
+repo_root = Path(__file__).resolve().parents[3]
 output_dir = repo_root / "output" / "normal_1015"
 pattern = str(output_dir / "epoch_1_batch_*_weights.npz")
 acc_path = output_dir / "epoch_accuracies_normal.csv"
